@@ -130,7 +130,9 @@ __attribute__((aligned(4))) void
 kernel_entry(void)
 {
     __asm__ __volatile__(
-        "csrw sscratch, sp\n"
+        // 从sscratch中获取运行进程的内核栈
+        "csrrw sp, sscratch, sp\n"
+
         "addi sp, sp, -4 *31\n"
         "sw ra, 4*0(sp)\n"
         "sw gp, 4*1(sp)\n"
@@ -163,8 +165,13 @@ kernel_entry(void)
         "sw s10, 4*28(sp)\n"
         "sw s11, 4*29(sp)\n"
 
+        // 获取并保存异常发生时的sp
         "csrr a0, sscratch\n"
         "sw a0, 4*30(sp)\n"
+
+        // 重置内核栈
+        "addi a0, sp, 4 * 31\n"
+        "csrw sscratch, a0\n"
 
         "mv a0, sp\n"
         "call handle_trap\n"
@@ -251,6 +258,11 @@ void yield(void)
     // 如果除了当前进程外没有可运行的进程，返回并继续处理
     if (next == current_proc)
         return;
+
+    __asm__ __volatile__(
+        "csrw sscratch, %[sscratch]\n"
+        :
+        : [sscratch] "r"((uint32_t)&next->stack[sizeof(next->stack)]));
     // 上下文切换
     struct process *prev = current_proc;
     current_proc = next;
@@ -288,13 +300,14 @@ void kernel_main(void)
 
     memset(__bss, 0, (size_t)__bss_end - (size_t)__bss);
 
+    WRITE_CSR(stvec, (uint32_t)kernel_entry);
+
     idle_proc = create_process((uint32_t)NULL);
     idle_proc->pid = 0;
     current_proc = idle_proc;
 
     proc_a = create_process((uint32_t)proc_a_entry);
     proc_b = create_process((uint32_t)proc_b_entry);
-    proc_a_entry();
 
     yield();
     PANIC("switched to idle process!");
