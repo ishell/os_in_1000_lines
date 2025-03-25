@@ -232,6 +232,31 @@ void delay(void)
         __asm__ __volatile__("nop");
 }
 
+struct process *current_proc; // 当前运行的进程
+struct process *idle_proc;    // 空闲进程
+
+void yield(void)
+{
+    struct process *next = idle_proc;
+    for (int i = 0; i < PROCS_MAX; i++)
+    {
+        struct process *proc = &procs[(current_proc->pid + i) % PROCS_MAX];
+        if (proc->state == PROC_RUNNABLE && proc->pid > 0)
+        {
+            next = proc;
+            break;
+        }
+    }
+
+    // 如果除了当前进程外没有可运行的进程，返回并继续处理
+    if (next == current_proc)
+        return;
+    // 上下文切换
+    struct process *prev = current_proc;
+    current_proc = next;
+    switch_context(&prev->sp, &next->sp);
+}
+
 struct process *proc_a;
 struct process *proc_b;
 
@@ -241,7 +266,7 @@ void proc_a_entry(void)
     while (1)
     {
         putchar('A');
-        switch_context(&proc_a->sp, &proc_b->sp);
+        yield();
         delay();
     }
 }
@@ -252,7 +277,7 @@ void proc_b_entry(void)
     while (1)
     {
         putchar('B');
-        switch_context(&proc_b->sp, &proc_a->sp);
+        yield();
         delay();
     }
 }
@@ -263,11 +288,16 @@ void kernel_main(void)
 
     memset(__bss, 0, (size_t)__bss_end - (size_t)__bss);
 
+    idle_proc = create_process((uint32_t)NULL);
+    idle_proc->pid = 0;
+    current_proc = idle_proc;
+
     proc_a = create_process((uint32_t)proc_a_entry);
     proc_b = create_process((uint32_t)proc_b_entry);
     proc_a_entry();
 
-    PANIC("booted!");
+    yield();
+    PANIC("switched to idle process!");
 }
 
 __attribute__((section(".text.boot")))
