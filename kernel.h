@@ -70,12 +70,15 @@ struct sbiret sbi_call(long arg0, long arg1, long arg2, long arg3, long arg4, lo
     return (struct sbiret){.error = a0, .value = a1};
 }
 
+#define USER_BASE 0x1000000
 #define SATP_SV32 (1u << 31)
 #define PAGE_V (1 << 0) // "Valid" 位(表项已启用)
 #define PAGE_R (1 << 1) // 可读
 #define PAGE_W (1 << 2) // 可写
 #define PAGE_X (1 << 3) // 可执行
 #define PAGE_U (1 << 4) // 用户(用户模式可访问)
+
+#define SSTATUS_SPIE (1 << 5)
 
 #define READ_CSR(reg)                                         \
     ({                                                        \
